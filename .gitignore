@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Django
+db.sqlite3
+*.sqlite3
+staticfiles/
+media/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Test and tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+
+# Local raw datasets
+location_app/data/cities500_raw/
+*.zip

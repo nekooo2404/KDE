@@ -1,0 +1,87 @@
+{% extends 'location_app/base.html' %}
+{% block title %}Dự Đoán Vị Trí Bài Đăng X{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="hero-copy">
+        <p class="eyebrow">Bản Demo Định Vị Bài Đăng X</p>
+        <h1>Đọc liên kết bài đăng X, rút trích nội dung và ước lượng thành phố khả nghi nhất.</h1>
+        <p class="hero-text">
+            Giao diện này cho phép dán liên kết bài đăng từ X/Twitter, nạp nội dung bằng backend,
+            sau đó chạy KDE trên các từ khóa địa lý để so sánh giữa nhiều thành phố.
+        </p>
+    </div>
+    <div class="hero-note">
+        <span>Ctrl + Enter</span>
+        <p>Gửi dự đoán nhanh sau khi chỉnh sửa nội dung.</p>
+    </div>
+</section>
+
+<section class="workspace">
+    <div class="panel control-panel">
+        <div class="panel-header">
+            <h2>Nguồn dữ liệu</h2>
+            <p>Dán liên kết bài đăng hoặc nhập nội dung thủ công.</p>
+        </div>
+
+        <div class="input-group">
+            <label for="tweetUrl">Liên kết bài đăng</label>
+            <div class="stack-on-mobile">
+                <input
+                    id="tweetUrl"
+                    type="url"
+                    placeholder="https://x.com/user/status/1234567890"
+                    autocomplete="off"
+                >
+                <button id="resolveUrlBtn" class="secondary-button" type="button">Đọc liên kết</button>
+            </div>
+            <p class="helper-text">
+                Khi bạn copy paste liên kết vào đây, web sẽ gọi backend để lấy nội dung bài đăng về ô nhập liệu.
+            </p>
+        </div>
+
+        <div class="input-group">
+            <label for="tweetText">Nội dung bài đăng</label>
+            <textarea
+                id="tweetText"
+                rows="7"
+                placeholder="Ví dụ: Hoàng hôn ở bãi biển Miami sau một ngày dài."
+            >Beautiful sunset at the beach in Miami after a long day.</textarea>
+        </div>
+
+        <div class="input-group">
+            <label for="cityBias">Ưu tiên thành phố</label>
+            <input
+                id="cityBias"
+                type="text"
+                list="cityBiasSuggestions"
+                placeholder="Gõ tên thành phố, ví dụ Singapore, SG"
+                autocomplete="off"
+            >
+            <datalist id="cityBiasSuggestions"></datalist>
+            <p class="helper-text">
+                Dataset hiện tại có {{ total_world_cities }} thành phố từ {{ city_dataset_source }}.
+                Gõ vài ký tự để nhận gợi ý thành phố bias.
+            </p>
+        </div>
+
+        <div class="button-row">
+            <button id="predictBtn" type="button">Dự đoán vị trí</button>
+            <button id="sampleBtn" class="ghost-button" type="button">Nạp ví dụ</button>
+        </div>
+
+        <div class="status-message is-neutral" id="statusMessage">
+            Sẵn sàng phân tích. Dán liên kết bài đăng hoặc chỉnh sửa nội dung rồi bấm dự đoán.
+        </div>
+
+        <div class="loading" id="loading" hidden>
+            <div class="spinner"></div>
+            <p id="loadingLabel">Đang xử lý yêu cầu...</p>
+        </div>
+    </div>
+
+    <div class="panel output-panel">
+        {% include 'location_app/results.html' %}
+    </div>
+</section>
+{% endblock %}

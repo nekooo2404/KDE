@@ -1,0 +1,47 @@
+<div class="results-shell">
+    <div class="card map-card">
+        <div class="card-heading">
+            <div>
+                <p class="eyebrow">Bản Đồ Mật Độ</p>
+                <h2>Thành phố ứng viên</h2>
+            </div>
+            <p class="card-caption" id="mapMeta">
+                Hiển thị {{ total_world_cities }} thành phố toàn cầu. Điểm sáng là các ứng viên KDE mạnh nhất.
+            </p>
+        </div>
+        <div id="map" aria-label="Biểu đồ trực quan hóa điểm số theo thành phố"></div>
+    </div>
+
+    <div class="results-grid">
+        <div class="card">
+            <div class="card-heading">
+                <div>
+                    <p class="eyebrow">Dự Đoán</p>
+                    <h2>Kết quả</h2>
+                </div>
+            </div>
+            <div class="result-summary" id="resultSummary">
+                <p class="result-city" id="predictedCity">Chưa có dự đoán</p>
+                <p class="result-confidence" id="confidence">Độ tin cậy: 0%</p>
+                <p class="result-meta" id="biasApplied">Ưu tiên thành phố: không áp dụng</p>
+                <p class="result-meta" id="termsCount">Số từ khóa khớp: 0</p>
+            </div>
+            <div class="token-list" id="matchedTerms">
+                <span class="token empty-token">Chưa có từ khóa nào</span>
+            </div>
+            <p class="tweet-preview" id="tweetPreview">
+                Nội dung bài đăng sẽ được hiển thị ở đây sau khi phân tích.
+            </p>
+        </div>
+
+        <div class="card">
+            <div class="card-heading">
+                <div>
+                    <p class="eyebrow">Bảng Điểm</p>
+                    <h2>So sánh theo thành phố</h2>
+                </div>
+            </div>
+            <div class="score-list" id="scoreList"></div>
+        </div>
+    </div>
+</div>
