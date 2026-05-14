@@ -509,3 +509,93 @@ button:disabled {
         grid-template-columns: 1fr;
     }
 }
+
+/* ---------------------------------------------------------------------------
+   Keyword chip panel
+   --------------------------------------------------------------------------- */
+
+.keyword-group label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.keyword-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+    color: #fffdf8;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0;
+    transition: background 200ms ease, transform 200ms ease;
+}
+
+.keyword-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+    min-height: 38px;
+    padding: 10px 12px;
+    border-radius: 16px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.54);
+}
+
+.keyword-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, rgba(38, 70, 83, 0.12), rgba(38, 70, 83, 0.06));
+    border: 1px solid rgba(38, 70, 83, 0.15);
+    color: var(--teal);
+    font-size: 0.88rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    animation: chipIn 180ms ease both;
+}
+
+.keyword-chip::before {
+    content: '#';
+    opacity: 0.4;
+    font-size: 0.8em;
+}
+
+@keyframes chipIn {
+    from {
+        opacity: 0;
+        transform: scale(0.85) translateY(4px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.chip-empty,
+.chip-loading {
+    font-size: 0.9rem;
+    color: var(--muted);
+    font-style: italic;
+}
+
+.chip-loading::before {
+    content: '';
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid rgba(38, 70, 83, 0.2);
+    border-top-color: var(--accent);
+    animation: spin 0.7s linear infinite;
+    margin-right: 6px;
+    vertical-align: middle;
+}

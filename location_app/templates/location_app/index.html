@@ -8,7 +8,7 @@
         <h1>Đọc liên kết bài đăng X, rút trích nội dung và ước lượng thành phố khả nghi nhất.</h1>
         <p class="hero-text">
             Giao diện này cho phép dán liên kết bài đăng từ X/Twitter, nạp nội dung bằng backend,
-            sau đó chạy KDE trên các từ khóa địa lý để so sánh giữa nhiều thành phố.
+            sau đó chạy KDE + Embedding Similarity trên các từ khóa địa lý để so sánh giữa nhiều thành phố.
         </p>
     </div>
     <div class="hero-note">
@@ -47,6 +47,17 @@
                 rows="7"
                 placeholder="Ví dụ: Hoàng hôn ở bãi biển Miami sau một ngày dài."
             >Beautiful sunset at the beach in Miami after a long day.</textarea>
+        </div>
+
+        <div class="input-group keyword-group" id="keywordGroupPanel">
+            <label>
+                Keyword đã lọc
+                <span class="keyword-badge" id="keywordCount">0</span>
+            </label>
+            <div class="keyword-chip-list" id="keywordChipList">
+                <span class="chip-empty">Nhập nội dung tweet để tự động lọc keyword…</span>
+            </div>
+            <p class="helper-text">Các từ khóa liên quan địa lý được tự động trích xuất — loại bỏ URL, @mention, emoji và stopword.</p>
         </div>
 
         <div class="input-group">

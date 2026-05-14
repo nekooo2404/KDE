@@ -60,6 +60,7 @@ class WorldCityDataset:
         self.normalized_labels: List[str] = []
         self.label_index: Dict[str, int] = {}
         self.alias_index: Dict[str, tuple[int, ...]] = {}
+        self.city_label_to_index: Dict[str, int] = {}  # FAST reverse lookup: city_label → index
         self.map_points: List[List[float | int]] = []
 
         self.latitudes = np.zeros(self.total_cities, dtype=np.float32)
@@ -75,6 +76,7 @@ class WorldCityDataset:
             population = int(row[CITY_POPULATION] or 0)
 
             self.labels.append(label)
+            self.city_label_to_index[label] = index  # O(1) lookup instead of O(n)
             normalized_label = normalize_search_text(label)
             self.normalized_labels.append(normalized_label)
             self.label_index.setdefault(normalized_label, index)

@@ -5,6 +5,8 @@ const elements = {};
 let worldMapPromise;
 let worldCitiesPromise;
 let citySearchTimer;
+let keywordExtractTimer;
+let lastExtractedKeywords = [];
 
 document.addEventListener('DOMContentLoaded', () => {
     cacheDomElements();
@@ -32,6 +34,8 @@ function cacheDomElements() {
     elements.tweetPreview = document.getElementById('tweetPreview');
     elements.scoreList = document.getElementById('scoreList');
     elements.mapMeta = document.getElementById('mapMeta');
+    elements.keywordChipList = document.getElementById('keywordChipList');
+    elements.keywordCount = document.getElementById('keywordCount');
 }
 
 function bindEvents() {
@@ -39,6 +43,14 @@ function bindEvents() {
     elements.resolveUrlBtn.addEventListener('click', handleResolveTweetUrl);
     elements.sampleBtn.addEventListener('click', applySampleTweet);
     elements.cityBias.addEventListener('input', queueCitySearch);
+
+    // Auto-extract keywords khi người dùng gõ (debounce 450ms)
+    elements.tweetText.addEventListener('input', () => {
+        window.clearTimeout(keywordExtractTimer);
+        keywordExtractTimer = window.setTimeout(() => {
+            queueKeywordExtract(elements.tweetText.value);
+        }, 450);
+    });
 
     elements.tweetText.addEventListener('keydown', (event) => {
         if (event.ctrlKey && event.key === 'Enter') {
@@ -64,6 +76,11 @@ function bindEvents() {
         elements.tweetUrl.value = pastedText.trim();
         handleResolveTweetUrl();
     });
+
+    // Extract ngay khi load trang (nếu textarea đã có giá trị)
+    if (elements.tweetText.value.trim()) {
+        queueKeywordExtract(elements.tweetText.value);
+    }
 }
 
 function queueCitySearch() {
@@ -78,6 +95,62 @@ function queueCitySearch() {
         fetchCitySuggestions(query);
     }, 180);
 }
+
+// ---------------------------------------------------------------------------
+// Keyword extraction
+// ---------------------------------------------------------------------------
+
+function queueKeywordExtract(text) {
+    if (!text.trim()) {
+        renderKeywordChips([]);
+        return;
+    }
+    if (elements.keywordChipList) {
+        elements.keywordChipList.innerHTML = '<span class="chip-loading">Đang lọc keyword…</span>';
+    }
+    fetchKeywords(text);
+}
+
+async function fetchKeywords(text) {
+    try {
+        const response = await fetch('/api/extract-keywords/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken'),
+            },
+            body: JSON.stringify({ text }),
+        });
+        const data = await response.json();
+        if (data.success) {
+            lastExtractedKeywords = data.keywords || [];
+            renderKeywordChips(lastExtractedKeywords);
+        }
+    } catch (_err) {
+        // Lỗi không ảnh hưởng UI chính
+    }
+}
+
+function renderKeywordChips(keywords) {
+    if (!elements.keywordChipList) return;
+
+    if (elements.keywordCount) {
+        elements.keywordCount.textContent = keywords.length;
+    }
+
+    if (!keywords.length) {
+        elements.keywordChipList.innerHTML = '<span class="chip-empty">Không tìm thấy keyword địa lý nào.</span>';
+        return;
+    }
+
+    elements.keywordChipList.innerHTML = keywords
+        .map((kw) => `<span class="keyword-chip">${escapeHtml(kw)}</span>`)
+        .join('');
+}
+
+// ---------------------------------------------------------------------------
+// City search autocomplete
+// ---------------------------------------------------------------------------
 
 async function fetchCitySuggestions(query) {
     try {
@@ -95,6 +168,10 @@ async function fetchCitySuggestions(query) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Prediction
+// ---------------------------------------------------------------------------
+
 async function handlePrediction() {
     const tweet = elements.tweetText.value.trim();
     const cityBias = elements.cityBias.value.trim();
@@ -104,12 +181,13 @@ async function handlePrediction() {
         return;
     }
 
-    setLoading(true, 'Đang tính điểm KDE trên dataset toàn cầu...');
+    setLoading(true, 'Đang phân tích và dự đoán vị trí…');
 
     try {
-        const data = await postJson('/api/predict/', { tweet, cityBias });
+        const data = await postJson('/api/predict/', { tweet, cityBias, useAiFallback: true });
         displayResults(data);
-        setStatus(`Đã dự đoán xong. Thành phố khả nghi nhất: ${data.predicted_city}.`, 'success');
+        const src = data.prediction_source === 'embedding' ? ' (Embedding)' : ' (KDE)';
+        setStatus(`Đã dự đoán xong. Thành phố khả nghi nhất: ${data.predicted_city}${src}.`, 'success');
     } catch (error) {
         resetResults();
         setStatus(error.message, 'error');
@@ -117,6 +195,10 @@ async function handlePrediction() {
         setLoading(false);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Resolve tweet URL
+// ---------------------------------------------------------------------------
 
 async function handleResolveTweetUrl() {
     const tweetUrl = elements.tweetUrl.value.trim();
@@ -131,6 +213,7 @@ async function handleResolveTweetUrl() {
     try {
         const data = await postJson('/api/resolve-tweet/', { tweetUrl });
         elements.tweetText.value = data.tweet_text;
+        queueKeywordExtract(data.tweet_text);
         setStatus(
             data.author_name
                 ? `Đã nạp bài đăng từ ${data.author_name}${data.author_handle ? ` (${data.author_handle})` : ''}.`
@@ -149,12 +232,20 @@ function applySampleTweet() {
     elements.tweetUrl.value = '';
     elements.cityBias.value = '';
     elements.cityBiasSuggestions.innerHTML = '';
+    queueKeywordExtract(SAMPLE_TWEET);
     setStatus('Đã nạp ví dụ mẫu. Bấm "Dự đoán vị trí" để xem kết quả.', 'neutral');
 }
 
+// ---------------------------------------------------------------------------
+// Display results
+// ---------------------------------------------------------------------------
+
 function displayResults(data) {
     elements.predictedCity.textContent = data.predicted_city;
-    elements.confidence.textContent = `Độ tin cậy: ${formatPercent(data.confidence)}`;
+
+    const sourceLabel = data.prediction_source === 'embedding' ? 'Embedding' : 'KDE';
+    elements.confidence.textContent = `Độ tin cậy: ${formatPercent(data.confidence)} (${sourceLabel})`;
+
     elements.biasApplied.textContent = data.city_bias
         ? `Ưu tiên thành phố: ${data.city_bias}`
         : 'Ưu tiên thành phố: không áp dụng';
@@ -216,6 +307,10 @@ function renderScores(topCities, predictedCity) {
         .join('');
 }
 
+// ---------------------------------------------------------------------------
+// Map rendering
+// ---------------------------------------------------------------------------
+
 async function renderMap(predictedCity, topCities) {
     const mapNode = document.getElementById('map');
     mapNode.innerHTML = '';
@@ -256,7 +351,7 @@ async function renderMap(predictedCity, topCities) {
         drawHighlights(overlaySvg, projection, topCities, predictedCity);
 
         if (elements.mapMeta) {
-            elements.mapMeta.textContent = `Hiển thị ${formatNumber(cityData.total_cities || 0)} thành phố toàn cầu. Điểm sáng là các ứng viên KDE mạnh nhất.`;
+            elements.mapMeta.textContent = `Hiển thị ${formatNumber(cityData.total_cities || 0)} thành phố toàn cầu. Điểm sáng là các ứng viên mạnh nhất.`;
         }
     } catch (error) {
         mapNode.innerHTML = `
@@ -394,6 +489,10 @@ function drawHighlights(svg, projection, topCities, predictedCity) {
         .text((entry) => entry.score.toFixed(3));
 }
 
+// ---------------------------------------------------------------------------
+// Data loaders
+// ---------------------------------------------------------------------------
+
 async function loadWorldMap() {
     if (!worldMapPromise) {
         worldMapPromise = d3.json(WORLD_ATLAS_URL).then((topology) =>
@@ -417,6 +516,10 @@ async function loadWorldCities() {
 
     return worldCitiesPromise;
 }
+
+// ---------------------------------------------------------------------------
+// HTTP helpers
+// ---------------------------------------------------------------------------
 
 async function postJson(url, payload) {
     const response = await fetch(url, {
