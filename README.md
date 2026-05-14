@@ -1,122 +1,86 @@
-# KDE
+# KDE AI Predictor - Enterprise SaaS Dashboard
 
-Ứng dụng Django dự đoán thành phố khả nghi nhất từ nội dung bài đăng X/Twitter bằng cách:
+Hệ thống phân tích và dự đoán vị trí địa lý từ nội dung văn bản/Tweet ứng dụng AI (AI-powered Location Prediction).
+Hệ thống kết hợp nhiều phương pháp nội suy tiên tiến (KDE, TF-IDF, Semantic FAISS) với giao diện người dùng Next.js hiện đại, mang lại trải nghiệm tra cứu tức thời.
 
-- đọc nội dung bài đăng từ URL X/Twitter
-- rút trích term địa lý từ tweet
-- tính điểm KDE trên tập dữ liệu thành phố toàn cầu
-- hiển thị kết quả trên bản đồ thế giới
+## 🌟 Kiến trúc Hệ thống (Architecture)
 
-Project này hiện dùng dataset `GeoNames cities500` đã được build thành file JSON để phục vụ suy luận nhanh trong app.
+Project được cấu trúc theo mô hình **Monorepo (Backend Django + Frontend Next.js)**:
 
-## Công nghệ
+- **Frontend (`frontend/`)**: 
+  - Next.js 15 (App Router) + React 19.
+  - TailwindCSS v4 + `shadcn/ui` + Framer Motion (Hiệu ứng UI mượt mà, Dark Theme).
+  - Bản đồ tương tác với `react-simple-maps` và thông báo toàn cục `sonner`.
+  - Tối ưu hiệu năng: Code Splitting, Lazy Loading cho Biểu đồ (Recharts).
 
-- Python
-- Django 4.2.7
-- NumPy
-- D3.js + TopoJSON
-- SQLite
+- **Backend (`location_app/`)**: 
+  - Django 4.2 RESTful API.
+  - Xử lý pipeline dự đoán với 3 tầng thông minh:
+    1. **KDE Model (Kernel Density Estimation)**: Mật độ thực thể địa lý (<10ms).
+    2. **TF-IDF Fallback**: So sánh cosine similarity vector (<20ms).
+    3. **FAISS Semantic**: Phân tích ngữ nghĩa sâu bằng `sentence-transformers` (<500ms).
+  - Global Exception Handling (Middleware bắt lỗi và trả về chuẩn JSON).
+  - RAM Caching (LocMemCache) giúp lưu kết quả đã tra cứu.
 
-## Tính năng chính
+## 🚀 Tính năng nổi bật
+- **Sub-second Prediction**: Pipeline dự đoán phản hồi cực nhanh (phần lớn <100ms).
+- **Interactive Global Map**: Hiển thị chính xác toạ độ thành phố dự đoán trên bản đồ địa lý với hiệu ứng Radar.
+- **Smart Debounce Search**: Tự động trích xuất từ khoá địa lý (Geographic Markers) khi người dùng đang nhập liệu.
+- **Mobile Responsive Navigation**: Thanh điều hướng dạng Hamburger Menu hoạt động mượt mà trên di động.
+- **Data Analytics Dashboard**: Thống kê mức độ tự tin (Confidence score) và so sánh xếp hạng các thành phố.
 
-- nhập trực tiếp nội dung tweet hoặc dán URL bài đăng X/Twitter
-- autocomplete thành phố để áp dụng `city bias`
-- dự đoán vị trí từ tập dữ liệu hơn 200k thành phố toàn cầu
-- hiển thị toàn bộ cloud điểm thành phố trên bản đồ
-- trả về top city scores để so sánh kết quả
+## 📦 Yêu cầu Môi trường
 
-## Cấu trúc chính
+- Node.js 18.17+ (Cho Frontend)
+- Python 3.10+ (Cho Backend)
+- Redis (Optional, dùng nếu muốn chạy Asynchronous Logging qua Celery)
 
-- `tweet_locator/`: Django project settings và URL root
-- `location_app/`: app chính cho prediction, views, utils, tests
-- `location_app/data/world_cities.json`: dataset thành phố toàn cầu đã build
-- `location_app/management/commands/build_world_city_dataset.py`: command build dataset
-- `static/location_app/`: CSS và JavaScript cho giao diện
+## 🛠 Hướng dẫn Cài đặt & Khởi chạy
 
-## Yêu cầu môi trường
+### 1. Backend (Django)
 
-- Python 3.10+ khuyến nghị
-- Windows PowerShell hoặc shell tương đương
-
-## Cài đặt
+Mở terminal và trỏ vào thư mục gốc của project:
 
 ```powershell
+# Tạo và kích hoạt môi trường ảo
 python -m venv venv
 .\venv\Scripts\activate
+
+# Cài đặt thư viện Python
 pip install -r requirements.txt
+
+# Migrate DB và chạy server
 python manage.py migrate
 python manage.py runserver
 ```
+Backend sẽ chạy tại: `http://127.0.0.1:8000/`
 
-Mở trình duyệt tại:
-
-```text
-http://127.0.0.1:8000/
+**Tạo Dataset thành phố (Bắt buộc nếu chưa có)**
+```powershell
+# Chạy script để build file world_cities.json từ cities500
+python manage.py build_world_city_dataset
 ```
 
-## Chạy test
+### 2. Frontend (Next.js)
+
+Mở một terminal mới và trỏ vào thư mục `frontend/`:
 
 ```powershell
-.\venv\Scripts\python.exe manage.py test location_app
+cd frontend
+npm install
+npm run dev
 ```
+Frontend sẽ chạy tại: `http://localhost:3000/` (Giao diện chính dành cho Người dùng)
 
-## Dataset thành phố toàn cầu
+## 📡 API Endpoints chính
 
-App cần file:
+- `POST /api/predict/`: Core pipeline dự đoán thành phố từ nội dung văn bản. Hỗ trợ caching tự động.
+- `POST /api/predict/batch/`: Batch inference siêu tốc sử dụng FAISS cho nhiều đoạn văn bản cùng lúc.
+- `GET /api/city-search/?q=...`: Autocomplete gợi ý tên thành phố.
+- `POST /api/extract-keywords/`: Trích xuất thực thể địa lý thời gian thực từ chuỗi.
 
-```text
-location_app/data/world_cities.json
-```
+## 🤝 Contribution & Deployment
 
-Nếu file này chưa có, bạn có thể build lại từ raw `GeoNames cities500`:
-
-1. Tải `cities500.zip` từ GeoNames
-2. Giải nén `cities500.txt` vào:
-
-```text
-location_app/data/cities500_raw/cities500.txt
-```
-
-3. Chạy command:
-
-```powershell
-.\venv\Scripts\python.exe manage.py build_world_city_dataset
-```
-
-Lưu ý:
-
-- `world_cities.json` nên được commit nếu bạn muốn clone repo là chạy ngay
-- `cities500_raw/cities500.txt` là raw source lớn, không nên commit
-
-## API chính
-
-- `POST /api/predict/`: dự đoán thành phố từ tweet
-- `GET /api/city-search/?q=...`: gợi ý tên thành phố
-- `GET /api/world-cities/`: trả dữ liệu điểm thành phố cho bản đồ
-- `POST /api/resolve-tweet/`: đọc nội dung tweet từ URL X/Twitter
-
-## Push lên GitHub
-
-Repo đích:
-
-```text
-https://github.com/nekooo2404/KDE
-```
-
-Các lệnh cơ bản:
-
-```powershell
-git init
-git add .
-git commit -m "Initial commit"
-git branch -M main
-git remote add origin https://github.com/nekooo2404/KDE.git
-git push -u origin main
-```
-
-Nếu repo local đã có remote `origin`, chỉ cần cập nhật URL:
-
-```powershell
-git remote set-url origin https://github.com/nekooo2404/KDE.git
-git push -u origin main
-```
+- Đảm bảo thiết lập đầy đủ file `.env` trước khi đưa lên môi trường Production.
+- Tắt chế độ `DEBUG = True` trong Django Settings trước khi deploy.
+- Sử dụng lệnh `npm run build` ở Frontend để tối ưu hoá bundle tĩnh của Next.js.

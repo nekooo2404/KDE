@@ -1,5 +1,7 @@
 import json
 
+import hashlib
+from django.core.cache import cache
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
@@ -31,32 +33,20 @@ def _log_query_async(
     method: str = "semantic",
     keywords: list[str] | None = None,
 ) -> None:
-    """Log location query asynchronously using Celery (non-blocking)."""
+    """Log location query directly to DB (synchronous fallback)."""
     try:
-        log_location_query.delay(
+        LocationQuery.objects.create(
             query_text=query_text,
             inferred_city=inferred_city,
-            lat=lat,
-            lon=lon,
+            inferred_lat=lat,
+            inferred_lon=lon,
             confidence=confidence,
             method=method,
-            keywords=keywords,
+            keywords_extracted=keywords or [],
         )
     except Exception:
-        # If Celery is not available, fall back to sync logging
-        try:
-            LocationQuery.objects.create(
-                query_text=query_text,
-                inferred_city=inferred_city,
-                inferred_lat=lat,
-                inferred_lon=lon,
-                confidence=confidence,
-                method=method,
-                keywords_extracted=keywords or [],
-            )
-        except Exception:
-            # Don't fail the entire prediction if logging fails
-            pass
+        # Don't fail the entire prediction if logging fails
+        pass
 
 
 
@@ -186,146 +176,80 @@ def predict_location(request):
         raw_city_bias = (data.get("cityBias") or "").strip()
 
         if not tweet:
-            return JsonResponse(
-                {"success": False, "error": "Vui long nhap noi dung tweet."},
-                status=400,
-            )
+            return JsonResponse({"success": False, "error": "Vui long nhap noi dung tweet."}, status=400)
 
-        city_bias_index = None
+        # 1. Check Cache
+        cache_key = f"predict_{hashlib.md5(tweet.encode('utf-8')).hexdigest()}_{hashlib.md5(raw_city_bias.encode('utf-8')).hexdigest()}"
+        cached_result = cache.get(cache_key)
+        if cached_result:
+            return JsonResponse(cached_result)
+
+        # 2. Resolve Bias
         city_bias = ""
         if raw_city_bias:
             city_bias_index = dataset.resolve_bias_index(raw_city_bias)
             if city_bias_index is None:
-                return JsonResponse(
-                    {
-                        "success": False,
-                        "error": "Khong tim thay thanh pho bias trong dataset toan cau.",
-                    },
-                    status=400,
-                )
+                return JsonResponse({"success": False, "error": "Khong tim thay thanh pho bias trong dataset toan cau."}, status=400)
             city_bias = dataset.get_city_label(city_bias_index)
 
-        terms, term_locations = term_processor.extract_term_locations(tweet)
-        predicted_city, confidence, city_scores, top_cities = locality_kde.predict_location(
-            term_locations,
-            city_bias=city_bias,
-        )
-
-        # KDE không tìm được → fallback FAISS (super fast!)
-        if predicted_city is None:
+        # 3. Prediction Pipeline
+        def run_prediction_pipeline():
+            # Step A: Extract Terms
+            terms, term_locations = term_processor.extract_term_locations(tweet)
+            keywords = extract_keywords(tweet)
+            
+            # Step B: Try KDE Model (Instant)
+            predicted_city, confidence, city_scores, top_cities = locality_kde.predict_location(term_locations, city_bias=city_bias)
+            if predicted_city:
+                point = next((entry for entry in top_cities if entry["city"] == predicted_city), None)
+                _log_query_async(tweet, predicted_city, point.get("lat") if point else None, point.get("lon") if point else None, confidence, method="kde", keywords=terms)
+                return {
+                    "success": True, "predicted_city": predicted_city, "predicted_city_point": point,
+                    "confidence": float(confidence), "terms_found": len(terms), "terms": terms,
+                    "city_scores": city_scores, "top_cities": top_cities, "total_cities": dataset.total_cities,
+                    "tweet_preview": tweet[:280], "city_bias": city_bias, "prediction_source": "kde"
+                }
+            
+            # Step C: Try TF-IDF Fallback (Super Fast, ~20ms)
             try:
-                # Try FAISS first (50x faster than full semantic inference!)
-                faiss_results = infer_location_faiss(tweet, dataset, top_k=5)
-                
-                if faiss_results:
-                    keywords = extract_keywords(tweet)
-                    top_result = faiss_results[0]
-                    _log_query_async(
-                        tweet,
-                        top_result["city"],
-                        top_result.get("lat"),
-                        top_result.get("lon"),
-                        top_result.get("confidence"),
-                        method="faiss",  # Use FAISS method
-                        keywords=keywords,
-                    )
-                    payload = _prediction_payload_from_semantic(
-                        dataset,
-                        faiss_results,
-                        tweet,
-                        city_bias,
-                        keywords,
-                    )
-                    return JsonResponse(payload)
-                
-                # Fallback to full semantic inference if FAISS has issues
-                keywords = extract_keywords(tweet)
-                semantic_results = infer_location_semantic(
-                    tweet,
-                    dataset,
-                    top_k=5,
-                    keywords=keywords,
-                )
-                
-                if semantic_results:
-                    top_result = semantic_results[0]
-                    _log_query_async(
-                        tweet,
-                        top_result["city"],
-                        top_result.get("lat"),
-                        top_result.get("lon"),
-                        top_result.get("confidence"),
-                        method="semantic",
-                        keywords=keywords,
-                    )
-                    payload = _prediction_payload_from_semantic(
-                        dataset,
-                        semantic_results,
-                        tweet,
-                        city_bias,
-                        keywords,
-                    )
-                    return JsonResponse(payload)
-                
-                # Final fallback to TF-IDF embedding if semantic doesn't work
                 emb_result = predict_location_by_similarity(tweet, dataset)
-                _log_query_async(
-                    tweet,
-                    emb_result.get("predicted_city"),
-                    emb_result.get("predicted_city_point", {}).get("lat"),
-                    emb_result.get("predicted_city_point", {}).get("lon"),
-                    emb_result.get("confidence"),
-                    method="tfidf",
-                    keywords=keywords,
-                )
-                payload = _prediction_payload_from_embedding(dataset, emb_result, tweet, city_bias)
-                return JsonResponse(payload)
-            except ValueError as exc:
-                _log_query_async(tweet, None, None, None, None, keywords=[])
-                return JsonResponse({"success": False, "error": str(exc)}, status=422)
-            except Exception as exc:
-                _log_query_async(tweet, None, None, None, None, keywords=[])
-                return JsonResponse({"success": False, "error": str(exc)}, status=502)
+                # Ensure the confidence score is acceptable before returning
+                if emb_result.get("confidence", 0) > 0.05:
+                    _log_query_async(tweet, emb_result.get("predicted_city"), emb_result.get("predicted_city_point", {}).get("lat"), emb_result.get("predicted_city_point", {}).get("lon"), emb_result.get("confidence"), method="tfidf", keywords=keywords)
+                    return _prediction_payload_from_embedding(dataset, emb_result, tweet, city_bias)
+            except Exception:
+                pass
+            
+            # Step D: Try FAISS (Slow CPU, ~500ms)
+            faiss_results = infer_location_faiss(tweet, dataset, top_k=5)
+            if faiss_results:
+                top = faiss_results[0]
+                _log_query_async(tweet, top["city"], top.get("lat"), top.get("lon"), top.get("confidence"), method="faiss", keywords=keywords)
+                return _prediction_payload_from_semantic(dataset, faiss_results, tweet, city_bias, keywords)
+                
+            # Step E: Full Semantic (Slowest fallback)
+            semantic_results = infer_location_semantic(tweet, dataset, top_k=5, keywords=keywords)
+            if semantic_results:
+                top = semantic_results[0]
+                _log_query_async(tweet, top["city"], top.get("lat"), top.get("lon"), top.get("confidence"), method="semantic", keywords=keywords)
+                return _prediction_payload_from_semantic(dataset, semantic_results, tweet, city_bias, keywords)
+                
+            # Final fallback if all fails
+            raise ValueError("Không thể định vị được thành phố từ nội dung văn bản này.")
 
-        predicted_city_point = next(
-            (entry for entry in top_cities if entry["city"] == predicted_city),
-            None,
-        )
+        payload = run_prediction_pipeline()
         
-        # Log successful KDE prediction
-        _log_query_async(
-            tweet,
-            predicted_city,
-            predicted_city_point.get("lat") if predicted_city_point else None,
-            predicted_city_point.get("lon") if predicted_city_point else None,
-            confidence,
-            method="kde",
-            keywords=terms,
-        )
+        # Cache the successful payload for 24 hours
+        if payload.get("success"):
+            cache.set(cache_key, payload, timeout=86400)
+            
+        return JsonResponse(payload)
 
-        return JsonResponse(
-            {
-                "success": True,
-                "predicted_city": predicted_city,
-                "predicted_city_point": predicted_city_point,
-                "confidence": float(confidence),
-                "terms_found": len(terms),
-                "terms": terms,
-                "city_scores": city_scores,
-                "top_cities": top_cities,
-                "total_cities": dataset.total_cities,
-                "tweet_preview": tweet[:280],
-                "city_bias": city_bias,
-                "prediction_source": "kde",
-            }
-        )
+        # The above pipeline already returns JsonResponse properly.
+        pass
     except json.JSONDecodeError:
-        return JsonResponse(
-            {"success": False, "error": "Payload JSON khong hop le."},
-            status=400,
-        )
-    except Exception as exc:
-        return JsonResponse({"success": False, "error": str(exc)}, status=400)
+        return JsonResponse({"success": False, "error": "Payload JSON khong hop le."}, status=400)
+    # Note: GlobalExceptionMiddleware will catch other unhandled exceptions
 
 
 @csrf_exempt

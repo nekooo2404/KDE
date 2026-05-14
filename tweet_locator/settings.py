@@ -57,6 +57,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'location_app.middleware.GlobalExceptionMiddleware',
 ]
 
 ROOT_URLCONF = 'tweet_locator.urls'
@@ -138,5 +139,12 @@ CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'Asia/Ho_Chi_Minh'
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_MAX_RETRIES = 3
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "unique-snowflake",
+    }
+}
 
 # Location prediction dùng TF-IDF Embedding + Cosine Similarity (không cần API bên ngoài)
